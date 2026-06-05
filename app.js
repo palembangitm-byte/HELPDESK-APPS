@@ -639,7 +639,7 @@ async function fetchQuestionsFromServer() {
   const selectionEnd = isTyping ? focusedElement.selectionEnd : null;
 
   try {
-    const response = await fetch(`${API_URL}?action=get_questions&code=${currentSessionId}`);
+    const response = await fetch(`${API_URL}?action=get_questions&code=${currentSessionId.toUpperCase()}`);
     const questions = await response.json();
     
     if (Array.isArray(questions)) {
@@ -655,7 +655,6 @@ async function fetchQuestionsFromServer() {
         if (sessions[currentSessionId]) {
           sessions[currentSessionId].hasNewQuestions = true;
           sessions[currentSessionId].lastActivity = Date.now();
-          saveSessions();
           renderAdminSessions(); // Re-render sessions to show highlight
         }
         
@@ -677,7 +676,7 @@ async function fetchQuestionsFromServer() {
 
       // Jika sesi belum ada di memory (misal: baru buka link), ambil info sesi dulu
       if (!sessions[currentSessionId]) {
-        const sessionRes = await fetch(`${API_URL}?action=join_session&code=${currentSessionId}`);
+        const sessionRes = await fetch(`${API_URL}?action=join_session&code=${currentSessionId.toUpperCase()}`);
         const sessionData = await sessionRes.json();
         if (sessionData.status === "success") {
           sessions[currentSessionId] = {
@@ -686,7 +685,6 @@ async function fetchQuestionsFromServer() {
             name: sessionData.session_name,
             questions: []
           };
-          saveSessions();
           const nameEl = document.getElementById("part-session-name");
           if (nameEl) nameEl.textContent = sessionData.session_name;
         }
@@ -864,7 +862,7 @@ async function submitQuestion() {
   try {
     const params = new URLSearchParams({ 
       action: "submit_question", 
-      session_code: currentSessionId, 
+      session_code: currentSessionId.toUpperCase(), 
       content: text,
       sender: senderName 
     });
@@ -887,7 +885,7 @@ async function submitComment(qId) {
   if (!question) return;
 
   try {
-    const params = new URLSearchParams({ action: "submit_comment", session_code: currentSessionId, question_text: question.text, content: text });
+    const params = new URLSearchParams({ action: "submit_comment", session_code: currentSessionId.toUpperCase(), question_text: question.text, content: text });
     await fetch(`${API_URL}?${params.toString()}`);
     input.value = "";
     fetchQuestionsFromServer();
@@ -900,7 +898,7 @@ async function upvoteQuestion(qId) {
   const question = sessions[currentSessionId].questions.find(q => q.id === qId);
   if (!question) return;
   try {
-    const params = new URLSearchParams({ action: "upvote_question", session_code: currentSessionId, question_text: question.text });
+    const params = new URLSearchParams({ action: "upvote_question", session_code: currentSessionId.toUpperCase(), question_text: question.text });
     await fetch(`${API_URL}?${params.toString()}`);
     fetchQuestionsFromServer();
   } catch (e) {}
@@ -910,7 +908,7 @@ async function addReaction(qId, emoji) {
   const question = sessions[currentSessionId].questions.find(q => q.id === qId);
   if (!question) return;
   try {
-    const params = new URLSearchParams({ action: "submit_reaction", session_code: currentSessionId, question_text: question.text, emoji: emoji });
+    const params = new URLSearchParams({ action: "submit_reaction", session_code: currentSessionId.toUpperCase(), question_text: question.text, emoji: emoji });
     await fetch(`${API_URL}?${params.toString()}`);
     fetchQuestionsFromServer();
   } catch (e) {}
