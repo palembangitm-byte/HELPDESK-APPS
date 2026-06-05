@@ -13,7 +13,7 @@ let systemSettings = JSON.parse(localStorage.getItem('qa_system_settings')) || {
     primaryColor: '#ea580c',
     logoUrl: 'assets/img/logo.png',
     landingTitle: 'Gabung ke Sesi Q&A',
-    landingSubtitle: 'Masukkan kode sesi untuk mulai bertanya dan memberikan suara.',
+    landingSubtitle: 'Masukkan kode sesi unik untuk mulai berdiskusi dan memberikan suara.',
     landingBgUrl: 'assets/img/login-bg.jpg',
     loginBgUrl: 'assets/img/login-bg.jpg',
     // Landing Right Settings
@@ -21,7 +21,7 @@ let systemSettings = JSON.parse(localStorage.getItem('qa_system_settings')) || {
     landingRightSubtitle: 'Platform Q&A real-time untuk seminar, workshop, dan konferensi profesional.',
     landingRightBadge: 'Trusted by 500+ Events',
     // Login Right Settings
-    loginRightTitle: 'Q&A EVENT- HARPER HOTEL PALEMBANG',
+    loginRightTitle: 'Q&A EVENT - HARPER HOTEL PALEMBANG',
     loginRightSubtitle: 'Kelola event Anda dengan mudah. Buat sesi baru, bagikan kode, dan pantau jalannya diskusi secara real-time.',
     appFont: 'Plus Jakarta Sans'
 };
@@ -30,6 +30,24 @@ let currentSessionId = getSessionFromUrl() || '';
 let isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'user');
 let activeReactionQuestionId = null;
 let lastQuestionsJson = ''; // Untuk mendeteksi perubahan data
+let lastQuestionCountPerSession = {}; // Track last question count per session
+let notificationTimeout = null; // Timeout for reminder notifications
+let notificationRepeatCount = 0; // Count of reminder notifications
+
+// Create a simple notification sound
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+function playNotificationSound() {
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+}
 
 // --- APP INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -92,7 +110,7 @@ function saveSystemSettings() {
 }
 
 function showSystemSettings() {
-    if (currentUser && currentUser.role !== 'admin') return alert("Hanya Admin yang dapat mengakses menu ini.");
+    if (currentUser && currentUser.role !== 'admin') return alert("Hanya Admin yang bisa mengakses menu ini.");
     
     // Reset to first tab
     switchSettingsTab('branding');
@@ -264,7 +282,7 @@ function showSessionManagement() {
 
 function showUserManagement() {
     if (currentUser.role !== 'admin') {
-        return alert("Hanya Admin yang dapat mengakses menu ini.");
+        return alert("Hanya Admin yang bisa mengakses menu ini.");
     }
     document.getElementById('user-management-modal').classList.remove('hidden');
     selectRoleInModal('user'); // Default role
@@ -356,7 +374,7 @@ function saveUsers() {
 }
 
 function deleteUser(username) {
-    if (username === 'admin') return alert("User default tidak dapat dihapus.");
+    if (username === 'admin') return alert("User default tidak bisa dihapus.");
     if (confirm(`Hapus user "${username}"?`)) {
         users = users.filter(u => u.username !== username);
         saveUsers();
@@ -372,6 +390,11 @@ function showAdminQADashboard(sessionId) {
     if (session) {
         document.getElementById('active-session-name').textContent = session.name;
         document.getElementById('active-session-code-display').textContent = `#${session.shortCode || sessionId}`;
+        // Reset notification count for this session
+        notificationRepeatCount = 0;
+        if (notificationTimeout) {
+            clearTimeout(notificationTimeout);
+        }
     }
     document.getElementById('admin-qa-dashboard').classList.remove('hidden');
     fetchQuestionsFromServer();
@@ -494,26 +517,35 @@ async function joinSessionByCode() {
 
 function renderAdminSessions() {
     const tbody = document.getElementById('admin-sessions-table-body');
-    const sessionsList = Object.values(sessions);
+    let sessionsList = Object.values(sessions);
+    
+    // Sort sessions: those with new questions first, then by lastActivity
+    sessionsList.sort((a, b) => {
+        const aNew = a.hasNewQuestions ? 1 : 0;
+        const bNew = b.hasNewQuestions ? 1 : 0;
+        if (bNew !== aNew) return bNew - aNew;
+        return (b.lastActivity || 0) - (a.lastActivity || 0);
+    });
+    
     document.getElementById('total-sessions-count').textContent = sessionsList.length;
 
     tbody.innerHTML = sessionsList.map(s => `
-        <tr class="cursor-pointer group" onclick="showAdminQADashboard('${s.id}')">
+        <tr class="cursor-pointer group ${s.hasNewQuestions ? 'bg-orange-50 border-l-4 border-orange-500' : ''}" onclick="showAdminQADashboard('${s.id}')">
             <td class="px-8 py-5">
                 <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors">
+                    <div class="w-12 h-12 ${s.hasNewQuestions ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-400'} rounded-xl flex items-center justify-center group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors">
                         <i data-lucide="calendar" class="w-6 h-6"></i>
                     </div>
-                    <div class="flex flex-col">
+                    <div>
                         <span class="font-black text-slate-900 text-lg tracking-tight">${escapeHtml(s.name)}</span>
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Code: #${s.shortCode}</span>
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Code: #${s.shortCode}</span>
                     </div>
                 </div>
             </td>
             <td class="px-8 py-5">
-                <div class="inline-flex items-center gap-2.5 px-4 py-2 bg-green-50 text-green-600 rounded-xl border border-green-100 shadow-sm">
-                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span class="text-[10px] font-black uppercase tracking-widest">Active Live</span>
+                <div class="inline-flex items-center gap-2.5 px-4 py-2 ${s.hasNewQuestions ? 'bg-orange-100 text-orange-600 border-orange-200' : 'bg-green-50 text-green-600 border-green-100'} rounded-xl border shadow-sm">
+                    <div class="w-2 h-2 ${s.hasNewQuestions ? 'bg-orange-500' : 'bg-green-500'} rounded-full animate-pulse"></div>
+                    <span class="text-[10px] font-black uppercase tracking-widest">${s.hasNewQuestions ? 'Pertanyaan Baru!' : 'Active Live'}</span>
                 </div>
             </td>
             <td class="px-8 py-5 text-right" onclick="event.stopPropagation()">
@@ -548,7 +580,7 @@ async function confirmCreateSession() {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     try {
         await fetch(`${API_URL}?action=create_session&code=${code}&name=${name}`);
-        sessions[code] = { id: code, shortCode: code, name: name, questions: [] };
+        sessions[code] = { id: code, shortCode: code, name: name, questions: [], lastActivity: Date.now() };
         saveSessions();
         hideCreateSessionModal();
         renderAdminSessions();
@@ -584,6 +616,30 @@ async function fetchQuestionsFromServer() {
         
         if (Array.isArray(questions)) {
             const currentJson = JSON.stringify(questions);
+            
+            // Track question count changes
+            const lastCount = lastQuestionCountPerSession[currentSessionId] || 0;
+            if (questions.length > lastCount && isAdmin) {
+                // New questions detected!
+                lastQuestionCountPerSession[currentSessionId] = questions.length;
+                
+                // Mark session as having new questions
+                if (sessions[currentSessionId]) {
+                    sessions[currentSessionId].hasNewQuestions = true;
+                    sessions[currentSessionId].lastActivity = Date.now();
+                    saveSessions();
+                    renderAdminSessions(); // Re-render sessions to show highlight
+                }
+                
+                // Play notification sound
+                playNotificationSound();
+                
+                // Set up reminder notifications
+                if (document.getElementById('admin-qa-dashboard').classList.contains('hidden')) {
+                    notificationRepeatCount = 0;
+                    scheduleReminder();
+                }
+            }
             
             // HANYA RENDER ULANG JIKA DATA BERUBAH
             if (currentJson === lastQuestionsJson) {
@@ -636,8 +692,32 @@ async function fetchQuestionsFromServer() {
     }
 }
 
+function scheduleReminder() {
+    if (notificationRepeatCount >= 3) return;
+    
+    notificationTimeout = setTimeout(() => {
+        // Check if we're not in the session dashboard
+        if (document.getElementById('admin-qa-dashboard').classList.contains('hidden')) {
+            playNotificationSound();
+            notificationRepeatCount++;
+            scheduleReminder(); // Schedule next reminder
+        }
+    }, 60000); // 1 minute
+}
+
 function renderQuestions() {
     if (isAdmin) {
+        // Mark session as read when we're in the dashboard
+        if (sessions[currentSessionId]) {
+            sessions[currentSessionId].hasNewQuestions = false;
+            saveSessions();
+            renderAdminSessions();
+            // Clear notifications
+            notificationRepeatCount = 0;
+            if (notificationTimeout) {
+                clearTimeout(notificationTimeout);
+            }
+        }
         renderAdminQuestions();
     } else {
         renderPartQuestions();
@@ -973,4 +1053,9 @@ function downloadQuestionsPDF() {
     doc.save(`QA_Report_${session.name.replace(/\s+/g, '_')}_${session.shortCode}.pdf`);
 }
 
-setInterval(fetchQuestionsFromServer, 5000);
+// --- AUTO REFRESH ---
+setInterval(fetchQuestionsFromServer, 5000); // Check every 5 seconds (unchanged)
+setInterval(() => {
+    // 12-hour auto refresh
+    window.location.reload();
+}, 12 * 60 * 60 * 1000);
