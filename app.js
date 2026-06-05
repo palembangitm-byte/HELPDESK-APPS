@@ -4,7 +4,7 @@ const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const DEFAULT_SESSION_ID = "default-session";
 
 // --- STATE ---
-let sessions = JSON.parse(localStorage.getItem("qa_sessions")) || {};
+let sessions = {};
 let users = [];
 let systemSettings = JSON.parse(localStorage.getItem("qa_system_settings")) || {
   appName: "TanyaAja",
@@ -32,19 +32,11 @@ let lastQuestionCountPerSession = {}; // Track last question count per session
 let notificationTimeout = null; // Timeout for reminder notifications
 let notificationRepeatCount = 0; // Count of reminder notifications
 
-// Create a simple notification sound
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+// Create a notification sound
+const notificationSound = new Audio('https://drive.google.com/uc?export=download&id=1FYJtZOmN3XXtKRUjnworwq1p58pcT7cb');
 function playNotificationSound() {
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  oscillator.frequency.value = 800;
-  oscillator.type = "sine";
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + 0.5);
+  notificationSound.currentTime = 0;
+  notificationSound.play();
 }
 
 // --- APP INITIALIZATION ---
@@ -55,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function initApp() {
   await loadUsers();
+  await loadSessions();
   updateAdminUI();
   if (window.location.hash) {
     currentSessionId = getSessionFromUrl();
@@ -79,6 +72,20 @@ async function loadUsers() {
     users = await response.json();
   } catch (e) {
     console.error("Error loading users:", e);
+  }
+}
+
+async function loadSessions() {
+  try {
+    const response = await fetch(`${API_URL}?action=get_sessions`);
+    const serverSessions = await response.json();
+    // Convert array to object keyed by id
+    sessions = {};
+    serverSessions.forEach(session => {
+      sessions[session.id] = session;
+    });
+  } catch (e) {
+    console.error("Error loading sessions:", e);
   }
 }
 
@@ -250,10 +257,11 @@ function showLandingPage() {
   lucide.createIcons();
 }
 
-function showMasterDashboard() {
+async function showMasterDashboard() {
   if (!isAdmin) return showLandingPage();
   if (currentUser.role !== "admin") return showSessionManagement();
   hideAllPages();
+  await loadSessions(); // Refresh sessions
   document.getElementById("master-dashboard").classList.remove("hidden");
   updateAdminUI();
   lucide.createIcons();
@@ -269,9 +277,10 @@ function hideAdminAuthPage() {
   showLandingPage();
 }
 
-function showSessionManagement() {
+async function showSessionManagement() {
   if (!isAdmin) return showLandingPage();
   hideAllPages();
+  await loadSessions(); // Refresh sessions
   document.getElementById("session-management-page").classList.remove("hidden");
   
   // Role-based UI visibility
@@ -597,8 +606,7 @@ async function confirmCreateSession() {
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
   try {
     await fetch(`${API_URL}?action=create_session&code=${code}&name=${name}`);
-    sessions[code] = { id: code, shortCode: code, name: name, questions: [], lastActivity: Date.now() };
-    saveSessions();
+    await loadSessions(); // Reload sessions from server
     hideCreateSessionModal();
     renderAdminSessions();
   } catch (e) {
@@ -606,11 +614,15 @@ async function confirmCreateSession() {
   }
 }
 
-function deleteSession(id) {
+async function deleteSession(id) {
   if (confirm("Hapus sesi ini?")) {
-    delete sessions[id];
-    saveSessions();
-    renderAdminSessions();
+    try {
+      await fetch(`${API_URL}?action=delete_session&code=${id}`);
+      await loadSessions(); // Reload sessions from server
+      renderAdminSessions();
+    } catch (e) {
+      alert("Gagal menghapus sesi.");
+    }
   }
 }
 
@@ -907,7 +919,6 @@ async function addReaction(qId, emoji) {
 
 // --- UTILS ---
 
-function saveSessions() { localStorage.setItem("qa_sessions", JSON.stringify(sessions)); }
 function getSessionFromUrl() { return window.location.hash.substring(1); }
 function formatTime(ts) { 
   if (!ts) return "";
@@ -1072,6 +1083,13 @@ function downloadQuestionsPDF() {
 
 // --- AUTO REFRESH ---
 setInterval(fetchQuestionsFromServer, 5000); // Check every 5 seconds (unchanged)
+// Auto refresh sessions every 10 seconds for admins
+setInterval(async () => {
+  if (isAdmin) {
+    await loadSessions();
+    renderAdminSessions();
+  }
+}, 10000);
 setInterval(() => {
   // 12-hour auto refresh
   window.location.reload();
