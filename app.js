@@ -1090,7 +1090,27 @@ setInterval(async () => {
     renderAdminSessions();
   }
 }, 10000);
-setInterval(() => {
-  // 12-hour auto refresh
-  window.location.reload();
-}, 12 * 60 * 60 * 1000);
+// Auto clear all session questions at 8 AM and 8 PM every day
+setInterval(async () => {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentDate = now.toDateString();
+  const lastClearedDate = localStorage.getItem('lastClearedAllDate');
+  
+  // Check if it's 8 AM or 8 PM, and we haven't cleared today yet
+  if ((currentHour === 8 || currentHour === 20) && lastClearedDate !== currentDate) {
+    // Clear questions for all sessions
+    for (const sessionId in sessions) {
+      try {
+        await fetch(`${API_URL}?action=clear_session_questions&code=${sessionId}`);
+      } catch (e) {
+        console.error(`Error clearing questions for session ${sessionId}:`, e);
+      }
+    }
+    // Record that we've cleared today
+    localStorage.setItem('lastClearedAllDate', currentDate);
+    // Refresh data
+    await loadSessions();
+    if (isAdmin) renderAdminSessions();
+  }
+}, 60000); // Check every minute
