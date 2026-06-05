@@ -50,7 +50,7 @@ async function initApp() {
   await loadSessions();
   updateAdminUI();
   if (window.location.hash) {
-    currentSessionId = getSessionFromUrl();
+    currentSessionId = getSessionFromUrl(); // Already uppercase
     if (isAdmin) {
       showAdminQADashboard(currentSessionId);
     } else {
@@ -420,11 +420,11 @@ async function deleteUser(username) {
 function showAdminQADashboard(sessionId) {
   if (!isAdmin) return showParticipantView(sessionId);
   hideAllPages();
-  currentSessionId = sessionId;
-  const session = sessions[sessionId];
+  currentSessionId = sessionId.toUpperCase();
+  const session = sessions[currentSessionId];
   if (session) {
     document.getElementById("active-session-name").textContent = session.name;
-    document.getElementById("active-session-code-display").textContent = `#${session.shortCode || sessionId}`;
+    document.getElementById("active-session-code-display").textContent = `#${session.shortCode || currentSessionId}`;
     // Reset notification count for this session
     notificationRepeatCount = 0;
     if (notificationTimeout) {
@@ -438,8 +438,8 @@ function showAdminQADashboard(sessionId) {
 
 function showParticipantView(sessionId) {
   hideAllPages();
-  currentSessionId = sessionId;
-  const session = sessions[sessionId];
+  currentSessionId = sessionId.toUpperCase();
+  const session = sessions[currentSessionId];
   if (session) {
     document.getElementById("part-session-name").textContent = session.name;
   }
@@ -513,7 +513,7 @@ function logoutAdmin() {
 }
 
 async function joinSessionByCode() {
-  const code = document.getElementById("join-session-code").value.trim().toUpperCase();
+  const code = document.getElementById("join-session-code").value.trim().toUpperCase(); // Always uppercase
   if (!code) return;
   
   const btn = document.querySelector('button[onclick="joinSessionByCode()"]');
@@ -525,9 +525,8 @@ async function joinSessionByCode() {
 
     if (result.status === "success") {
       sessions[code] = { id: code, shortCode: code, name: result.session_name, questions: [] };
-      saveSessions();
       currentSessionId = code;
-      window.location.hash = code;
+      window.location.hash = code; // Set hash in uppercase
       showParticipantView(code);
     } else {
       alert(result.message);
@@ -919,7 +918,10 @@ async function addReaction(qId, emoji) {
 
 // --- UTILS ---
 
-function getSessionFromUrl() { return window.location.hash.substring(1); }
+function getSessionFromUrl() { 
+  const hash = window.location.hash.substring(1);
+  return hash ? hash.toUpperCase() : ""; 
+}
 function formatTime(ts) { 
   if (!ts) return "";
   const date = new Date(ts);
