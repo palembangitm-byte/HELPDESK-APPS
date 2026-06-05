@@ -79,13 +79,23 @@ async function loadSessions() {
   try {
     const response = await fetch(`${API_URL}?action=get_sessions`);
     const serverSessions = await response.json();
+    
+    if (serverSessions.status && serverSessions.status === "error") {
+      console.error("Error loading sessions:", serverSessions.message);
+      if (isAdmin) alert("Gagal memuat sesi: " + serverSessions.message);
+      return;
+    }
+    
     // Convert array to object keyed by id
     sessions = {};
-    serverSessions.forEach(session => {
-      sessions[session.id] = session;
-    });
+    if (Array.isArray(serverSessions)) {
+      serverSessions.forEach(session => {
+        sessions[session.id] = session;
+      });
+    }
   } catch (e) {
     console.error("Error loading sessions:", e);
+    if (isAdmin) alert("Gagal memuat sesi: " + e.toString());
   }
 }
 
@@ -736,7 +746,6 @@ function renderQuestions() {
     // Mark session as read when we're in the dashboard
     if (sessions[currentSessionId]) {
       sessions[currentSessionId].hasNewQuestions = false;
-      saveSessions();
       renderAdminSessions();
       // Clear notifications
       notificationRepeatCount = 0;
@@ -857,7 +866,7 @@ async function submitQuestion() {
   const text = input.value.trim();
   const senderName = nameInput.value.trim() || "Anonymous";
   
-  if (!text) return;
+  if (!text) return alert("Pertanyaan tidak boleh kosong");
   
   try {
     const params = new URLSearchParams({ 
@@ -866,12 +875,19 @@ async function submitQuestion() {
       content: text,
       sender: senderName 
     });
-    await fetch(`${API_URL}?${params.toString()}`);
+    const response = await fetch(`${API_URL}?${params.toString()}`);
+    const result = await response.json();
+    
+    if (result.status && result.status === "error") {
+      alert("Gagal mengirim pertanyaan: " + result.message);
+      return;
+    }
+    
     input.value = "";
-    // Reset nameInput jika Anda ingin, atau biarkan agar peserta tidak perlu ketik nama lagi
+    // Refresh pertanyaan
     fetchQuestionsFromServer();
   } catch (e) {
-    alert("Gagal mengirim pertanyaan.");
+    alert("Gagal mengirim pertanyaan: " + e.toString());
   }
 }
 
