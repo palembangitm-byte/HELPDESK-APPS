@@ -1,5 +1,5 @@
 // --- CONSTANTS ---
-const API_URL = "https://script.google.com/macros/s/AKfycbxGIziLoYb2nE6VlUr5eIXIdtKQ4x8nBz3qpAI3Vd-jRe5yaBOdvWMis1OyOPylQvVz/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyFBWbRIa7A6yAvlMyIMqVROcd-wExhB7Xm4dmtD79Yd4PjA7rFwDh4SiY98UMzBcOl/exec";
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const DEFAULT_SESSION_ID = "default-session";
 
