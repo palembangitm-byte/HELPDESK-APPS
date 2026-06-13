@@ -164,16 +164,19 @@ function applySystemSettings() {
 
 async function saveSystemSettings() {
   try {
-    await fetch(API_URL, {
+    console.log("Saving system settings:", systemSettings);
+    const response = await fetch(API_URL, {
       method: "POST",
       body: JSON.stringify({
         action: "save_system_settings",
-        settings: JSON.stringify(systemSettings)
+        settings: systemSettings // <-- ini harusnya object, bukan string
       }),
       headers: {
         "Content-Type": "application/json"
       }
     });
+    const result = await response.json();
+    console.log("Save result:", result);
     applySystemSettings();
   } catch (e) {
     console.error("Error saving system settings:", e);
@@ -278,7 +281,11 @@ function handleFileUpload(input, targetField) {
 
       if (inputId) {
         document.getElementById(inputId).value = base64Data;
-        console.log(`Image processed as Base64 for ${targetField}`);
+        console.log(`Image processed as Base64 for ${targetField}`, base64Data.substring(0, 100));
+        // Preview the image
+        if (targetField === "logoUrl" && document.getElementById("settings-logo-preview")) {
+          document.getElementById("settings-logo-preview").src = base64Data;
+        }
       }
     };
 
