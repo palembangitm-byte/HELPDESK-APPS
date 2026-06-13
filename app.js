@@ -165,21 +165,38 @@ function applySystemSettings() {
 async function saveSystemSettings() {
   try {
     console.log("Saving system settings:", systemSettings);
+    
+    // Try to save
     const response = await fetch(API_URL, {
       method: "POST",
+      mode: "cors",
+      cache: "no-cache",
       body: JSON.stringify({
         action: "save_system_settings",
-        settings: systemSettings // <-- ini harusnya object, bukan string
+        settings: systemSettings
       }),
       headers: {
-        "Content-Type": "application/json"
-      }
+        "Content-Type": "application/json",
+      },
+      redirect: "follow"
     });
+    
+    if (!response.ok) {
+      throw new Error("HTTP error! status: " + response.status);
+    }
+    
     const result = await response.json();
     console.log("Save result:", result);
-    applySystemSettings();
+    
+    if (result.status && result.status === "error") {
+      alert("Error saving: " + result.message);
+    } else {
+      applySystemSettings();
+      alert("Pengaturan berhasil disimpan!");
+    }
   } catch (e) {
     console.error("Error saving system settings:", e);
+    alert("Gagal menyimpan pengaturan: " + e.message + "\nPastikan URL Web App di app.js benar dan sudah di-deploy!");
   }
 }
 
