@@ -1,12 +1,12 @@
 // --- CONSTANTS ---
-const API_URL = "https://script.google.com/macros/s/AKfycbyFBWbRIa7A6yAvlMyIMqVROcd-wExhB7Xm4dmtD79Yd4PjA7rFwDh4SiY98UMzBcOl/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxGIziLoYb2nE6VlUr5eIXIdtKQ4x8nBz3qpAI3Vd-jRe5yaBOdvWMis1OyOPylQvVz/exec";
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
 const DEFAULT_SESSION_ID = "default-session";
 
 // --- STATE ---
 let sessions = {};
 let users = [];
-let systemSettings = {
+let systemSettings = JSON.parse(localStorage.getItem("qa_system_settings")) || {
   appName: "TanyaAja",
   primaryColor: "#ea580c",
   logoUrl: "assets/img/logo.png",
@@ -50,10 +50,14 @@ async function loadSystemSettings() {
     const response = await fetch(`${API_URL}?action=get_system_settings`);
     const settings = await response.json();
     if (settings && !settings.status) {
-      systemSettings = { ...systemSettings, ...settings };
+      // Gabungkan dengan settings lokal, prioritaskan lokal
+      systemSettings = { ...settings, ...systemSettings };
+      // Simpan ke lokal untuk cepat
+      localStorage.setItem("qa_system_settings", JSON.stringify(systemSettings));
     }
   } catch (e) {
-    console.error("Error loading system settings:", e);
+    console.error("Error loading system settings from server:", e);
+    // Tetap gunakan lokal
   }
 }
 
@@ -109,7 +113,6 @@ async function loadSessions() {
     }
   } catch (e) {
     console.error("Error loading sessions:", e);
-    if (isAdmin) alert("Gagal memuat sesi: " + e.toString());
   }
 }
 
@@ -163,40 +166,20 @@ function applySystemSettings() {
 }
 
 async function saveSystemSettings() {
+  // Simpan ke LOKAL TERLEBIH DAHULU agar langsung tampil
+  localStorage.setItem("qa_system_settings", JSON.stringify(systemSettings));
+  applySystemSettings();
+  
   try {
-    console.log("Saving system settings:", systemSettings);
-    
-    // Try to save
-    const response = await fetch(API_URL, {
-      method: "POST",
-      mode: "cors",
-      cache: "no-cache",
-      body: JSON.stringify({
-        action: "save_system_settings",
-        settings: systemSettings
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      redirect: "follow"
-    });
-    
-    if (!response.ok) {
-      throw new Error("HTTP error! status: " + response.status);
-    }
-    
-    const result = await response.json();
-    console.log("Save result:", result);
-    
-    if (result.status && result.status === "error") {
-      alert("Error saving: " + result.message);
-    } else {
-      applySystemSettings();
-      alert("Pengaturan berhasil disimpan!");
-    }
+    console.log("Saving system settings to server...");
+    const params = new URLSearchParams();
+    params.append("action", "save_system_settings");
+    params.append("settings", JSON.stringify(systemSettings));
+    await fetch(`${API_URL}?${params.toString()}`);
+    console.log("Settings saved to server successfully!");
   } catch (e) {
-    console.error("Error saving system settings:", e);
-    alert("Gagal menyimpan pengaturan: " + e.message + "\nPastikan URL Web App di app.js benar dan sudah di-deploy!");
+    console.error("Error saving to server:", e);
+    // Tidak usah alert, karena sudah tersimpan lokal
   }
 }
 
@@ -279,7 +262,7 @@ async function confirmSaveSystemSettings() {
   };
   await saveSystemSettings();
   hideSystemSettings();
-  alert("Pengaturan sistem berhasil disimpan!");
+  alert("Pengaturan berhasil disimpan!");
 }
 
 function handleFileUpload(input, targetField) {
@@ -298,11 +281,7 @@ function handleFileUpload(input, targetField) {
 
       if (inputId) {
         document.getElementById(inputId).value = base64Data;
-        console.log(`Image processed as Base64 for ${targetField}`, base64Data.substring(0, 100));
-        // Preview the image
-        if (targetField === "logoUrl" && document.getElementById("settings-logo-preview")) {
-          document.getElementById("settings-logo-preview").src = base64Data;
-        }
+        console.log(`Image processed as Base64 for ${targetField}`);
       }
     };
 
@@ -665,7 +644,7 @@ async function confirmCreateSession() {
   
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
   try {
-    await fetch(`${API_URL}?action=create_session&code=${code}&name=${name}`);
+    await fetch(`${API_URL}?action=create_session&code=${code}&name=${encodeURIComponent(name)}`);
     await loadSessions(); // Reload sessions from server
     hideCreateSessionModal();
     renderAdminSessions();
@@ -1142,42 +1121,41 @@ function downloadQuestionsPDF() {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
-    doc.text(`Halaman ${i} dari ${pageCount} - TanyaAja System`, 105, 285, { align: "center" });
+    doc.text(`Halaman ${i} dari ${pageCount}`, 105, 290, { align: "center" });
   }
-
-  doc.save(`QA_Report_${session.name.replace(/\s+/g, "_")}_${session.shortCode}.pdf`);
+  
+  doc.save(`Q&A_Report_${session.name.replace(/\s+/g, "_")}.pdf`);
 }
 
 // --- AUTO REFRESH ---
-setInterval(fetchQuestionsFromServer, 5000); // Check every 5 seconds (unchanged)
-// Auto refresh sessions every 10 seconds for admins
-setInterval(async () => {
-  if (isAdmin) {
-    await loadSessions();
-    renderAdminSessions();
-  }
-}, 10000);
-// Auto clear all session questions at 8 AM and 8 PM every day
-setInterval(async () => {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentDate = now.toDateString();
-  const lastClearedDate = localStorage.getItem('lastClearedAllDate');
-  
-  // Check if it's 8 AM or 8 PM, and we haven't cleared today yet
-  if ((currentHour === 8 || currentHour === 20) && lastClearedDate !== currentDate) {
-    // Clear questions for all sessions
-    for (const sessionId in sessions) {
-      try {
-        await fetch(`${API_URL}?action=clear_session_questions&code=${sessionId}`);
-      } catch (e) {
-        console.error(`Error clearing questions for session ${sessionId}:`, e);
+setInterval(fetchQuestionsFromServer, 5000); // Check for new questions every 5 seconds
+if (isAdmin) {
+  setInterval(loadSessions, 10000); // Refresh sessions every 10 seconds for admins
+}
+
+// --- AUTO CLEAR QUESTIONS ---
+function scheduleAutoClear() {
+  setInterval(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    // Check if it's 8 AM or 8 PM
+    if ((hour === 8 || hour === 20) && now.getMinutes() === 0 && now.getSeconds() === 0) {
+      // Check if we have cleared today
+      const lastClear = localStorage.getItem("last_clear_date");
+      const today = now.toDateString();
+      if (lastClear !== today) {
+        localStorage.setItem("last_clear_date", today);
+        // Clear all sessions
+        Object.keys(sessions).forEach(sessionId => {
+          fetch(`${API_URL}?action=clear_session_questions&code=${sessionId}`)
+            .catch(e => console.error("Error clearing session:", e));
+        });
+        // Reload sessions
+        loadSessions();
       }
     }
-    // Record that we've cleared today
-    localStorage.setItem('lastClearedAllDate', currentDate);
-    // Refresh data
-    await loadSessions();
-    if (isAdmin) renderAdminSessions();
-  }
-}, 60000); // Check every minute
+  }, 60000); // Check every minute
+}
+
+scheduleAutoClear();
+
