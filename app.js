@@ -164,11 +164,16 @@ function applySystemSettings() {
 
 async function saveSystemSettings() {
   try {
-    const params = new URLSearchParams({
-      action: "save_system_settings",
-      settings: JSON.stringify(systemSettings)
+    await fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "save_system_settings",
+        settings: JSON.stringify(systemSettings)
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      }
     });
-    await fetch(`${API_URL}?${params.toString()}`);
     applySystemSettings();
   } catch (e) {
     console.error("Error saving system settings:", e);
