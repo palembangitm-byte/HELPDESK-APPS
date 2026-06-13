@@ -6,7 +6,7 @@ const DEFAULT_SESSION_ID = "default-session";
 // --- STATE ---
 let sessions = {};
 let users = [];
-let systemSettings = JSON.parse(localStorage.getItem("qa_system_settings")) || {
+let systemSettings = {
   appName: "TanyaAja",
   primaryColor: "#ea580c",
   logoUrl: "assets/img/logo.png",
@@ -45,9 +45,23 @@ document.addEventListener("DOMContentLoaded", () => {
   initApp();
 });
 
+async function loadSystemSettings() {
+  try {
+    const response = await fetch(`${API_URL}?action=get_system_settings`);
+    const settings = await response.json();
+    if (settings && !settings.status) {
+      systemSettings = { ...systemSettings, ...settings };
+    }
+  } catch (e) {
+    console.error("Error loading system settings:", e);
+  }
+}
+
 async function initApp() {
+  await loadSystemSettings();
   await loadUsers();
   await loadSessions();
+  applySystemSettings();
   updateAdminUI();
   if (window.location.hash) {
     currentSessionId = getSessionFromUrl(); // Already uppercase
@@ -148,9 +162,17 @@ function applySystemSettings() {
   loginBgs.forEach(el => el.style.backgroundImage = `url(${systemSettings.loginBgUrl || "assets/img/login-bg.jpg"})`);
 }
 
-function saveSystemSettings() {
-  localStorage.setItem("qa_system_settings", JSON.stringify(systemSettings));
-  applySystemSettings();
+async function saveSystemSettings() {
+  try {
+    const params = new URLSearchParams({
+      action: "save_system_settings",
+      settings: JSON.stringify(systemSettings)
+    });
+    await fetch(`${API_URL}?${params.toString()}`);
+    applySystemSettings();
+  } catch (e) {
+    console.error("Error saving system settings:", e);
+  }
 }
 
 function showSystemSettings() {
@@ -211,7 +233,7 @@ function hideSystemSettings() {
   document.getElementById("system-settings-modal").classList.add("hidden");
 }
 
-function confirmSaveSystemSettings() {
+async function confirmSaveSystemSettings() {
   systemSettings = {
     appName: document.getElementById("sys-set-app-name").value.trim(),
     primaryColor: document.getElementById("sys-set-primary-color").value,
@@ -230,7 +252,7 @@ function confirmSaveSystemSettings() {
     
     appFont: document.getElementById("sys-set-font").value
   };
-  saveSystemSettings();
+  await saveSystemSettings();
   hideSystemSettings();
   alert("Pengaturan sistem berhasil disimpan!");
 }
